@@ -1,4 +1,4 @@
-# sssaas-ruby
+# sssaas-golang
 API Library for [SSSaaS](http://sssaas.com)
 
     Copyright (C) 2015 Alexander Scheel, Joel May, Matthew Burket  
