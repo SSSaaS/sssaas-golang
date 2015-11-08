@@ -1,27 +1,30 @@
 package sssaas
 
 import (
-	"error"
+	"encoding/json"
+	"errors"
 	"github.com/SSSaaS/sssa-golang"
 	"io/ioutil"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type Shares struct {
-	sharedSecrets []string `json:"sharedSecrets"`
+	SharedSecrets []string `json:"sharedSecrets"`
 }
 
 func GetSecret(serveruris []string, tokens []string, shares []string, timeout int) (string, error) {
-	results = shares
 
+	var results []string = shares
 	var wg sync.WaitGroup
 
 	var has_err = false
 	var err_mesg = ""
 
-	duration := time.Duration(timeout * time.Second)
+	duration := time.Duration(time.Duration(timeout) * time.Second)
 
 	for i := range serveruris {
 		wg.Add(1)
@@ -34,15 +37,16 @@ func GetSecret(serveruris []string, tokens []string, shares []string, timeout in
 			req.Header.Set("User-Agent", "sssaas-golang v0 v0.0.1")
 			res, _ := client.Do(req)
 
-			if res.StatusCode != 302 {
+			if res.StatusCode != 200 {
+
 				has_err = true
-				err_mesg += strconv.Atoi(res.StatusCode) + ": " + res.Status + "; "
+				err_mesg += strconv.Itoa(res.StatusCode) + ": " + res.Status + "; "
 			} else {
 				defer res.Body.Close()
 				data, err := ioutil.ReadAll(res.Body)
 				if err != nil {
 					has_err = true
-					err_mesg += err.Error + ": "
+					err_mesg += err.Error() + ": "
 				}
 
 				current := Shares{}
@@ -61,8 +65,21 @@ func GetSecret(serveruris []string, tokens []string, shares []string, timeout in
 	wg.Wait()
 
 	if has_err {
-		return "", Error(err_mesg)
+		return "", errors.New(err_mesg)
 	}
 
-	return sssa.Combine(results)
+	sort.Strings(results)
+	clen := len(results)
+	i := 0
+
+	for i < clen-1 {
+		if results[i] == results[i+1] {
+			results = append(results[:i], results[i+1:]...)
+			clen = len(results)
+		} else {
+			i += 1
+		}
+	}
+
+	return sssa.Combine(results), nil
 }
