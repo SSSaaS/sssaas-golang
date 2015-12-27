@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-type Shares struct {
-	SharedSecrets []string `json:"sharedSecrets"`
-}
-
 func GetSecret(serveruris []string, tokens []string, shares []string, timeout int) (string, error) {
 
 	var results []string = shares
