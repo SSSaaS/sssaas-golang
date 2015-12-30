@@ -1,9 +1,13 @@
 package sssaas
 
-type Shares struct {
+type response struct {
 	SharedSecrets []string `json:"sharedSecrets"`
 }
 
 type Config struct {
-
+	Remote []string
+	Local string
+	Shares []string
+	Minimum int
+	Timeout int
 }

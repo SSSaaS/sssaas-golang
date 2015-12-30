@@ -3,22 +3,82 @@ package sssaas
 import (
 	"encoding/json"
 	"errors"
-	"github.com/SSSaaS/sssa-golang"
+	sssa "github.com/SSSaaS/sssa-golang"
 	"io/ioutil"
 	"net/http"
 	"sort"
+	"bufio"
 	"strconv"
+    "os"
 	"sync"
 	"time"
+	"gopkg.in/yaml.v2"
 )
 
-func GetSecret(serveruris []string, tokens []string, shares []string, timeout int) (string, error) {
+func FromYAML(content []byte, key string) (string, error) {
+	var output map[string]map[string]interface{}
+	err := yaml.Unmarshal(content, &output)
+	if err != nil {
+		return "", err
+	}
+	var obj Config
+	if _, ok := output[key]["remote"]; ok {
+		for i := range output[key]["remote"].([]interface{}) {
+			obj.Remote = append(obj.Remote, output[key]["remote"].([]interface{})[i].(string))
+		}
+	}
+	if _, ok := output[key]["shares"]; ok {
+		for i := range output[key]["shares"].([]interface{}) {
+			obj.Remote = append(obj.Remote, output[key]["shares"].([]interface{})[i].(string))
+		}
+	}
+	if _, ok := output[key]["local"]; ok {
+		obj.Local = output[key]["local"].(string)
+	}
+	if _, ok := output[key]["minimum"]; ok {
+		obj.Minimum = output[key]["minimum"].(int)
+	}
+	if _, ok := output[key]["timeout"]; ok {
+		obj.Minimum = output[key]["timeout"].(int)
+	}
 
+	return FromConfig(obj)
+}
+
+func FromConfig(obj Config) (string, error) {
+	if obj.Local != "" {
+		fh, err := os.Open(obj.Local)
+		if err != nil {
+			return "", err
+		}
+		defer fh.Close()
+
+		r := bufio.NewReader(fh)
+		line, err := r.ReadString('\n')
+		for err != nil {
+			if sssa.IsValidShare(line) {
+                obj.Shares = append(obj.Shares, line)
+            }
+		}
+
+        if line != "" && sssa.IsValidShare(line) {
+            obj.Shares = append(obj.Shares, line)
+        }
+	}
+
+    return GetSecret(obj.Remote, obj.Shares, obj.Timeout)
+}
+
+func GetSecret(serveruris []string, shares []string, timeout int) (string, error) {
 	var results []string = shares
 	var wg sync.WaitGroup
 
 	var has_err = false
 	var err_mesg = ""
+
+    if timeout <= 0 {
+        timeout = 300
+    }
 
 	duration := time.Duration(time.Duration(timeout) * time.Second)
 
@@ -64,6 +124,13 @@ func GetSecret(serveruris []string, tokens []string, shares []string, timeout in
 		return "", errors.New(err_mesg)
 	}
 
+	results = RemoveDuplicates(results)
+
+	return sssa.Combine(results), nil
+}
+
+func removeDuplicates(data []string) []string {
+	results := data
 	sort.Strings(results)
 	clen := len(results)
 	i := 0
@@ -77,5 +144,6 @@ func GetSecret(serveruris []string, tokens []string, shares []string, timeout in
 		}
 	}
 
-	return sssa.Combine(results), nil
+	return results
+
 }
