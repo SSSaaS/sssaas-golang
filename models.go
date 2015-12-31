@@ -5,9 +5,9 @@ type response struct {
 }
 
 type Config struct {
-	Remote []string
-	Local string
-	Shares []string
+	Remote  []string
+	Local   string
+	Shares  []string
 	Minimum int
 	Timeout int
 }

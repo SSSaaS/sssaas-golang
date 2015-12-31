@@ -1,18 +1,19 @@
 package sssaas
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
-	sssa "github.com/SSSaaS/sssa-golang"
+	"github.com/SSSaaS/sssa-golang"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
-	"sort"
-	"bufio"
 	"strconv"
-    "os"
+	"os"
+	"sort"
 	"sync"
+	"fmt"
 	"time"
-	"gopkg.in/yaml.v2"
 )
 
 func FromYAML(content []byte, key string) (string, error) {
@@ -21,6 +22,7 @@ func FromYAML(content []byte, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	var obj Config
 	if _, ok := output[key]["remote"]; ok {
 		for i := range output[key]["remote"].([]interface{}) {
@@ -55,76 +57,115 @@ func FromConfig(obj Config) (string, error) {
 
 		r := bufio.NewReader(fh)
 		line, err := r.ReadString('\n')
-		for err != nil {
-			if sssa.IsValidShare(line) {
-                obj.Shares = append(obj.Shares, line)
-            }
+
+		for err == nil {
+			last := len(line)-1
+			share := line[:last]
+
+			if sssa.IsValidShare(share) {
+				obj.Shares = append(obj.Shares, share)
+			}
+			line, err = r.ReadString('\n')
 		}
 
-        if line != "" && sssa.IsValidShare(line) {
-            obj.Shares = append(obj.Shares, line)
-        }
+		if line != "" && sssa.IsValidShare(line) {
+			obj.Shares = append(obj.Shares, line)
+		}
 	}
 
-    return GetSecret(obj.Remote, obj.Shares, obj.Timeout)
+	return GetSecret(obj.Remote, obj.Shares, obj.Minimum, obj.Timeout)
 }
 
-func GetSecret(serveruris []string, shares []string, timeout int) (string, error) {
+func GetSecret(endpoints []string, shares []string, minimum int, timeout int) (string, error) {
 	var results []string = shares
 	var wg sync.WaitGroup
+	var global_err []error
+	var done bool = false
 
-	var has_err = false
-	var err_mesg = ""
-
-    if timeout <= 0 {
-        timeout = 300
-    }
+	if timeout == 0 {
+		timeout = 300
+	}
 
 	duration := time.Duration(time.Duration(timeout) * time.Second)
-
-	for i := range serveruris {
+	for i := range endpoints {
 		wg.Add(1)
 		go func() {
 			client := &http.Client{
 				Timeout: duration,
 			}
 
-			req, _ := http.NewRequest("GET", serveruris[i]+"?key="+tokens[i], nil)
+			req, err := http.NewRequest("GET", endpoints[i], nil)
+			if err != nil {
+				global_err = append(global_err, err)
+
+				if !done {
+					wg.Done()
+				}
+				return
+			}
+
 			req.Header.Set("User-Agent", "sssaas-golang v0 v0.0.1")
-			res, _ := client.Do(req)
+			res, err := client.Do(req)
+			if err != nil {
+				global_err = append(global_err, err)
+
+				if !done {
+					wg.Done()
+				}
+				return
+			}
 
 			if res.StatusCode != 200 {
+				global_err = append(global_err, errors.New(strconv.Itoa(res.StatusCode) + ":" + res.Status))
 
-				has_err = true
-				err_mesg += strconv.Itoa(res.StatusCode) + ": " + res.Status + "; "
+				if !done {
+					wg.Done()
+				}
 			} else {
 				defer res.Body.Close()
 				data, err := ioutil.ReadAll(res.Body)
 				if err != nil {
-					has_err = true
-					err_mesg += err.Error() + ": "
+					global_err = append(global_err, err)
 				}
 
-				current := Shares{}
+				current := response{}
 
-				json.Unmarshal([]byte(data), &current)
+				err = json.Unmarshal([]byte(data), &current)
+				if err != nil {
+					global_err = append(global_err, err)
+				}
 
 				for j := range current.SharedSecrets {
 					results = append(results, current.SharedSecrets[j])
 				}
 			}
 
-			wg.Done()
+			results = removeDuplicates(results)
+
+			if len(results) >= minimum && !done {
+				done = true
+				for _ = range endpoints {
+					wg.Done()
+				}
+			}
+			if !done {
+				wg.Done()
+			}
 		}()
 	}
 
 	wg.Wait()
 
-	if has_err {
-		return "", errors.New(err_mesg)
-	}
+	results = removeDuplicates(results)
 
-	results = RemoveDuplicates(results)
+	if len(results) < minimum {
+		fmt.Println("results")
+		if len(global_err) >= 1 {
+			return "", global_err[0]
+		} else {
+			return "", errors.New("Could not meet minimum shares!")
+		}
+	}
 
 	return sssa.Combine(results), nil
 }
