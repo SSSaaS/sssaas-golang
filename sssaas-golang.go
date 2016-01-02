@@ -4,15 +4,15 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/SSSaaS/sssa-golang"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
-	"fmt"
 	"time"
 )
 
@@ -59,7 +59,7 @@ func FromConfig(obj Config) (string, error) {
 		line, err := r.ReadString('\n')
 
 		for err == nil {
-			last := len(line)-1
+			last := len(line) - 1
 			share := line[:last]
 
 			if sssa.IsValidShare(share) {
@@ -116,7 +116,7 @@ func GetSecret(endpoints []string, shares []string, minimum int, timeout int) (s
 			}
 
 			if res.StatusCode != 200 {
-				global_err = append(global_err, errors.New(strconv.Itoa(res.StatusCode) + ":" + res.Status))
+				global_err = append(global_err, errors.New(strconv.Itoa(res.StatusCode)+":"+res.Status))
 
 				if !done {
 					wg.Done()
