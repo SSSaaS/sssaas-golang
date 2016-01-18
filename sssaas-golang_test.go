@@ -5,7 +5,7 @@ import (
 )
 
 func TestFromYAML(t *testing.T) {
-	output, err := FromYAML([]byte("database_password:\n    remote: ['http://localhost:8765/api/v0/request/test?key=sssaas-library-test-allowed']\n    local: /Users/cipherboy/Development/SSSaaS/sssaas-golang/test/secrets.sssa\n    minimum: 4\n"), "database_password")
+	output, err := FromYAML([]byte("database_password:\n    remote: ['http://localhost:8765/api/v0/request/test?key=sssaas-library-test-allowed']\n    local: ./test/secrets.sssa\n    minimum: 4\n"), "database_password")
 	if err != nil {
 		t.Fatal(err)
 	}
